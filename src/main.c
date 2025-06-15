@@ -121,6 +121,9 @@ JsToken js_lexer_next(JsLexer* lexer) {
     case '(':
     case ')':
     case '+':
+    case '-':
+    case '*':
+    case '/':
         js_lexer_next_char(lexer);
         return MAKE_TOKEN(chr);
     case '"': {
@@ -299,7 +302,10 @@ void js_ast_dump(FILE* sink, JsAST* ast) {
 #define JS_INIT_PRECEDENCE 100
 #define JS_BINOPS \
     X('.') \
-    X('+')
+    X('+') \
+    X('-') \
+    X('*') \
+    X('/')
 
 // TODO: Use the actual JS precedence from here
 // https://en.cppreference.com/w/cpp/language/operator_precedence
@@ -307,6 +313,9 @@ int js_binop_prec(int op) {
     switch(op) {
     case '.':
         return 2;
+    case '*':
+    case '/':
+        return 5;
     case '+':
     case '-':
         return 6;
