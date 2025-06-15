@@ -1,2 +1,1 @@
-console.log("Hello World")
-console.log("Hello :)")
+a.b.c.d + foo
