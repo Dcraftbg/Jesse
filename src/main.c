@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "arena.h"
 #include "scratch.h"
+#include <darray.h>
 
 #include "fileutils.h"
 #include "atom.h"
@@ -228,9 +229,17 @@ enum {
     JSAST_STRING,
     JSAST_BINOP,
     JSAST_ATOM,
+    JSAST_CALL,
     JSAST_COUNT
 };
 typedef struct JsAST JsAST;
+typedef struct {
+    JsAST** items;
+    size_t len, cap;
+} JsCallArgs;
+static void js_call_args_dealloc(JsCallArgs* args) {
+    free(args->items);
+}
 struct JsAST {
     // size_t l0, c0, l1, c1;
     int kind;
@@ -238,6 +247,7 @@ struct JsAST {
         Atom* atom;
         struct { int op; JsAST *lhs, *rhs; } binop;
         struct { const char* data; size_t len; } str;
+        struct { JsAST* what; JsCallArgs args; } call;
     } as;
 };
 JsAST* js_ast_new_binop(Arena* arena, int op, JsAST* lhs, JsAST* rhs) {
@@ -264,12 +274,20 @@ JsAST* js_ast_new_atom(Arena* arena, Atom* atom) {
     ast->as.atom = atom;
     return ast;
 }
+JsAST* js_ast_new_call(Arena* arena, JsAST* what, JsCallArgs args) {
+    JsAST* ast = arena_alloc(arena, sizeof(*ast));
+    if(!ast) return NULL;
+    ast->kind = JSAST_CALL;
+    ast->as.call.what = what;
+    ast->as.call.args = args;
+    return ast;
+}
 JsAST* js_parse_basic(JsLexer* l, Arena* arena) {
     (void)arena;
     JsToken t = js_lexer_next(l);
     switch(t.kind) {
     case JSTOKEN_STR:
-        break;
+        return js_ast_new_str(arena, t.as.str.data, t.as.str.len);
     case JSTOKEN_ATOM:
         return js_ast_new_atom(arena, t.as.atom);
     }
@@ -279,7 +297,7 @@ JsAST* js_parse_basic(JsLexer* l, Arena* arena) {
     return NULL;
 }
 void js_ast_dump(FILE* sink, JsAST* ast) {
-    static_assert(JSAST_COUNT == 3, "Update js_ast_dump");
+    static_assert(JSAST_COUNT == 4, "Update js_ast_dump");
     switch(ast->kind) {
     case JSAST_ATOM:
         fprintf(sink, "%s", ast->as.atom->data);
@@ -287,6 +305,16 @@ void js_ast_dump(FILE* sink, JsAST* ast) {
     case JSAST_STRING:
         fprintf(sink, "\"%.*s\"", (int)ast->as.str.len, ast->as.str.data);
         break;
+    case JSAST_CALL: {
+        js_ast_dump(sink, ast->as.call.what);
+        fprintf(sink, " (");
+        JsCallArgs* args = &ast->as.call.args;
+        for(size_t i = 0; i < args->len; ++i) {
+            if(i > 0) fprintf(sink, ", ");    
+            js_ast_dump(sink, args->items[i]);
+        }
+        fprintf(sink, ")");
+    } break;
     case JSAST_BINOP:
         fprintf(sink, "(");
         js_ast_dump(sink, ast->as.binop.lhs);
@@ -324,6 +352,41 @@ int js_binop_prec(int op) {
         return -1;
     }
 }
+
+JsAST* js_parse_ast(JsLexer* l, Arena* arena, int expr_precedence);
+JsAST* js_parse_astcall(JsLexer* l, Arena* arena, JsAST* what) {
+    JsToken t;
+    if((t=js_lexer_next(l)).kind != '(') {
+        fprintf(stderr, "JS:ERROR Expected '(' in function call\n");
+        return NULL;
+    }
+    JsCallArgs args = {0};
+    for(;;) {
+        t = js_lexer_peak_next(l);
+        if(t.kind == ')') break;
+        JsAST* value = js_parse_ast(l, arena, JS_INIT_PRECEDENCE);
+        if(!value) {
+            js_call_args_dealloc(&args);
+            return NULL;
+        }
+        da_push(&args, value);
+        t = js_lexer_peak_next(l);
+        if(t.kind == ')') break;
+        else if (t.kind == ',') js_lexer_next(l);
+        else {
+            // TODO: error reporting (path:line:chr)
+            fprintf(stderr, "JS:ERROR Expected ')' or ',' in function call but found other\n");
+            js_call_args_dealloc(&args);
+            return NULL;
+        }
+    } 
+    if((t=js_lexer_next(l)).kind != ')') {
+        fprintf(stderr, "JS:ERROR Expected ')' in function call\n");
+        js_call_args_dealloc(&args);
+        return NULL;
+    }
+    return js_ast_new_call(arena, what, args);
+}
 JsAST* js_parse_ast(JsLexer* l, Arena* arena, int expr_precedence) {
     JsToken t;
     JsAST* v = js_parse_basic(l, arena);
@@ -331,6 +394,10 @@ JsAST* js_parse_ast(JsLexer* l, Arena* arena, int expr_precedence) {
     for(;;) {
         t = js_lexer_peak_next(l);
         switch(t.kind) {
+        case '(': {
+            if(2 > expr_precedence) return v;
+            v = js_parse_astcall(l, arena, v);
+        } break;
         #define X(op) case op:
         JS_BINOPS
         #undef X
@@ -350,6 +417,9 @@ JsAST* js_parse_ast(JsLexer* l, Arena* arena, int expr_precedence) {
             JS_BINOPS
             #undef X
                 next_prec = js_binop_prec(next_op = t.kind);
+                break;
+            case '(':
+                next_prec = 2;
                 break;
             }
             if (bin_precedence > next_prec) {
