@@ -1,1 +1,1 @@
-a.b.c.d + foo
+console.log("Hello bruvsky")
