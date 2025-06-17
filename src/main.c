@@ -434,6 +434,31 @@ JsAST* js_parse_ast(JsLexer* l, Arena* arena, int expr_precedence) {
     }
     return v;
 }
+enum {
+    JSSTATEMENT_EVAL,
+};
+typedef struct {
+    int kind;
+    union {
+        JsAST* ast;
+    } as;
+} JsStatement;
+JsStatement* js_statement_new_eval(Arena* arena, JsAST* ast) {
+    JsStatement* stmt = arena_alloc(arena, sizeof(*stmt));
+    if(!stmt) return NULL;
+    stmt->kind = JSSTATEMENT_EVAL;
+    stmt->as.ast = ast;
+    return stmt;
+}
+JsStatement* js_parse_statement(JsLexer* l, Arena* arena) {
+    JsAST* ast = js_parse_ast(l, arena, JS_INIT_PRECEDENCE);
+    if(!ast) return NULL;
+    return js_statement_new_eval(arena, ast);
+}
+typedef struct {
+    JsStatement** items;
+    size_t len, cap;
+} JsStatements;
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -448,20 +473,20 @@ int main(int argc, char** argv) {
     js_lexer_new(&lexer, path, content, content + size, &atom_table, str_buffer, sizeof(str_buffer));
     JsToken t;
     size_t errors = 0;
+    JsStatements statements = { 0 };
     while((t=js_lexer_peak_next(&lexer)).kind >= 0) {
         switch(t.kind) {
         case ';':
             js_lexer_next(&lexer);
             break;
-        default:
-            JsAST* ast = js_parse_ast(&lexer, &arena, JS_INIT_PRECEDENCE);
-            if(ast) {
-                fprintf(stderr, "Parsed AST successfully: `");
-                js_ast_dump(stderr, ast);
-                fprintf(stderr, "`\n");
+        default: {
+            JsStatement* stmt = js_parse_statement(&lexer, &arena);
+            if(!stmt) {
+                errors++;
+                continue;
             }
-            else errors++;
-            break;
+            da_push(&statements, stmt);
+        } break;
         }
     }
     if(t.kind != -JSERR_EOF) {
@@ -471,5 +496,8 @@ int main(int argc, char** argv) {
         errors++;
     }
     if(errors) return 1;
+    for(size_t i = 0; i < statements.len; ++i) {
+        fprintf(stderr, "Statement: %d\n", statements.items[i]->kind);
+    }
     return 0;
 }
