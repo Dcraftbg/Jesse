@@ -126,6 +126,7 @@ JsToken js_lexer_next(JsLexer* lexer) {
     case '-':
     case '*':
     case '/':
+    case ',':
         js_lexer_next_char(lexer);
         return MAKE_TOKEN(chr);
     case '"': {
