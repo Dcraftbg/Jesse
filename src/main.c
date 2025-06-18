@@ -542,7 +542,7 @@ static void jsruntime_console_log(JsVmValue*, JsVmStack* stack, size_t num_args)
             printf("<Function: #%08llx>", (unsigned long long)arg.as.func.func);
             break;
         case JSVM_VALUE_OBJECT:
-            todof("dump object");
+            jsvm_dump_value(stdout, &arg);
             break;
         case JSVM_VALUE_STRING:
             for(size_t i = 0; i < arg.as.string.len; ++i) {
