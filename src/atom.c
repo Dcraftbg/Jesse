@@ -79,3 +79,14 @@ Atom* atom_new(const char* data, size_t n) {
 Atom* atom_new_cstr(const char* data) {
     return atom_new(data, strlen(data));
 }
+Atom* atom_table_get_or_insert_new(AtomTable* map, const char* data, size_t data_len) {
+    Atom* atom = atom_table_get(map, data, data_len);
+    if(!atom) {
+        atom = atom_new(data, data_len);
+        atom_table_insert(map, atom);
+    }
+    return atom;
+}
+Atom* atom_table_get_or_insert_new_cstr(AtomTable* map, const char* data) {
+    return atom_table_get_or_insert_new(map, data, strlen(data));
+}

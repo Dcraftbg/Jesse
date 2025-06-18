@@ -27,3 +27,5 @@ bool atom_table_insert(AtomTable* map, Atom* atom);
 Atom* atom_table_get(AtomTable* map, const char* data, size_t data_len);
 Atom* atom_new(const char* data, size_t n);
 Atom* atom_new_cstr(const char* data);
+Atom* atom_table_get_or_insert_new(AtomTable* map, const char* data, size_t data_len);
+Atom* atom_table_get_or_insert_new_cstr(AtomTable* map, const char* data);
