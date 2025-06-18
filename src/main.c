@@ -555,7 +555,20 @@ static void jsruntime_console_log(JsVmValue*, JsVmStack* stack, size_t num_args)
     }
     printf("\n");
 }
-
+static void jsruntime_console_toString(JsVmValue*, JsVmStack* stack, size_t) {
+    JsVmValue value = {
+        .kind = JSVM_VALUE_STRING,
+        .as = {
+            .string = { 0 }
+        }
+    };
+    da_reserve(&value.as.string, 256);
+    value.as.string.len += snprintf(value.as.string.items, value.as.string.cap, "[object console]");
+    da_push(
+        stack,
+        value
+    );
+}
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -616,6 +629,17 @@ int main(int argc, char** argv) {
                 .as = {
                     .func = {
                         .func = jsruntime_console_log
+                    }
+                }
+            }
+        );
+        jsvm_object_insert(console,
+            atom_table_get_or_insert_new_cstr(&atom_table, "toString"),
+            (JsVmValue) {
+                .kind = JSVM_VALUE_FUNC,
+                .as = {
+                    .func = {
+                        .func = jsruntime_console_toString,
                     }
                 }
             }
