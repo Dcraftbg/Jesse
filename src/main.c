@@ -526,6 +526,35 @@ void js_compile_ast(JsVmInstructions* insts, JsAST* ast) {
         todof("js_compile_ast(%d)\n", ast->kind);
     }
 }
+// JS runtime
+static void jsruntime_console_log(JsVmValue*, JsVmStack* stack, size_t num_args) {
+    for(size_t i = 0; i < num_args; ++i) {
+        if(i > 0) printf(" ");
+        assert(stack->len > 0);
+        JsVmValue arg = da_pop(stack);
+        static_assert(JSVM_VALUE_COUNT == 4, "Update jsruntime_console_log");
+        switch(arg.kind) {
+        case JSVM_VALUE_UNDEFINED:
+            printf("undefined");
+            break;
+        case JSVM_VALUE_FUNC:
+            printf("<Function: #%08llx>", (unsigned long long)arg.as.func.func);
+            break;
+        case JSVM_VALUE_OBJECT:
+            todof("dump object");
+            break;
+        case JSVM_VALUE_STRING:
+            for(size_t i = 0; i < arg.as.string.len; ++i) {
+                char c = arg.as.string.items[i];
+                if(isprint(c)) printf("%c", c);
+                else printf("\\x%02X", c);
+            }
+            break;
+        }
+    }
+    printf("\n");
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -572,6 +601,36 @@ int main(int argc, char** argv) {
             break;
         }
     }
-    fprintf(stderr, "Compiled down to %zu instructions!\n", insts.len);
+    JsVmStack stack = { 0 };
+    JsVmObject globals = { 0 };
+    {
+        JsVmObject* console = malloc(sizeof(*console));
+        assert(console && "Just buy more RAM");
+        memset(console, 0, sizeof(*console));
+
+        jsvm_object_insert(console,
+            atom_table_get_or_insert_new_cstr(&atom_table, "log"),
+            (JsVmValue) {
+                .kind = JSVM_VALUE_FUNC,
+                .as = {
+                    .func = {
+                        .func = jsruntime_console_log
+                    }
+                }
+            }
+        );
+        jsvm_object_insert(&globals, 
+            atom_table_get_or_insert_new_cstr(&atom_table, "console"),
+            (JsVmValue) {
+                .kind = JSVM_VALUE_OBJECT,
+                .as = {
+                    .object = console
+                }
+            }
+        );
+    }
+    for(size_t i = 0; i < insts.len; ++i) {
+        jsvm_interpret(&globals, &stack, &insts.items[i]);
+    }
     return 0;
 }
