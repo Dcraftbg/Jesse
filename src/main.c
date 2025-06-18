@@ -10,6 +10,7 @@
 #include "atom.h"
 #include "utf8.h"
 #include "todo.h"
+#include "jsvm.h"
 
 typedef struct {
     const char *path;
@@ -459,6 +460,72 @@ typedef struct {
     JsStatement** items;
     size_t len, cap;
 } JsStatements;
+typedef struct {
+    JsVmInstruction* items;
+    size_t len, cap;
+} JsVmInstructions;
+void js_compile_ast(JsVmInstructions* insts, JsAST* ast) {
+    (void)insts;
+    static_assert(JSAST_COUNT == 4, "Update js_compile_ast");
+    switch(ast->kind) {
+    case JSAST_ATOM: {
+        // TODO: locals :)
+        JsVmInstruction inst = {
+            .kind = JSVM_GET_GLOBAL,
+            .as = {
+                .atom = ast->as.atom
+            }
+        };
+        da_push(insts, inst);
+    } break;
+    case JSAST_BINOP: {
+        switch(ast->as.binop.op) {
+        case '.': {
+            assert(ast->as.binop.rhs->kind == JSAST_ATOM);
+            js_compile_ast(insts, ast->as.binop.lhs);
+            JsVmInstruction inst = {
+                .kind = JSVM_GET_MEMBER,
+                .as = {
+                    .atom = ast->as.binop.rhs->as.atom
+                }
+            };
+            da_push(insts, inst);
+        } break;
+        default:
+            todof("js_compile_ast binop=%c", ast->as.binop.op);
+        }
+    } break;
+    case JSAST_CALL: {
+        for(size_t i = ast->as.call.args.len; i > 0; --i) {
+            js_compile_ast(insts, ast->as.call.args.items[i-1]);
+        }
+        js_compile_ast(insts, ast->as.call.what);
+        JsVmInstruction inst = {
+            .kind = JSVM_CALL,
+            .as = {
+                .call = {
+                    .num_args = ast->as.call.args.len,
+                }
+            }
+        };
+        da_push(insts, inst);
+    } break;
+    case JSAST_STRING: {
+        JsVmInstruction inst = {
+            .kind = JSVM_PUSH_STR,
+            .as = {
+                .push_str = {
+                    .data = ast->as.str.data,
+                    .len = ast->as.str.len,
+                }
+            }
+        };
+        da_push(insts, inst);
+    } break;
+    default:
+        todof("js_compile_ast(%d)\n", ast->kind);
+    }
+}
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -496,8 +563,15 @@ int main(int argc, char** argv) {
         errors++;
     }
     if(errors) return 1;
+    JsVmInstructions insts = { 0 };
     for(size_t i = 0; i < statements.len; ++i) {
-        fprintf(stderr, "Statement: %d\n", statements.items[i]->kind);
+        JsStatement* stmt = statements.items[i];
+        switch(stmt->kind) {
+        case JSSTATEMENT_EVAL:
+            js_compile_ast(&insts, stmt->as.ast);
+            break;
+        }
     }
+    fprintf(stderr, "Compiled down to %zu instructions!\n", insts.len);
     return 0;
 }
