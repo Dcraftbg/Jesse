@@ -29,3 +29,5 @@
         (da)->items[(index)] = (value);\
         (da)->len++;\
    } while(0)
+
+#define da_pop(da) da->items[--da->len]
