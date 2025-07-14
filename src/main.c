@@ -580,11 +580,35 @@ static void jsruntime_console_toString(JsVmValue*, JsVmValue*, JsVmStack* stack,
         value
     );
 }
+const char* shift_args(int *argc, char ***argv) {
+    if((*argc) <= 0) return NULL;
+    return ((*argc)--, *((*argv)++));
+}
+void help(FILE* sink, const char* exe) {
+    fprintf(sink, "%s ... (input path) ...\n", exe);
+}
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
     size_t size;
-    const char* path = "./example.js";
+    const char* path = NULL;
+    const char* exe = shift_args(&argc, &argv);
+    assert(exe);
+    while(argc) {
+        const char* arg = shift_args(&argc, &argv);
+        if(!path) path = arg;
+        else {
+            fprintf(stderr, "Unexpected argument `%s`\n", arg);
+            help(stderr, exe);
+            return 1;
+        }
+    }
+    if(!path) {
+        fprintf(stderr, "Missing input path!\n");
+        help(stderr, exe);
+        return 1;
+    }
+
     const char* content = read_entire_file(path, &size);
     if(!content) return 1;
     JsLexer lexer = { 0 };
@@ -648,20 +672,14 @@ int main(int argc, char** argv) {
             atom_table_get_or_insert_new_cstr(&atom_table, "toString"),
             (JsVmValue) {
                 .kind = JSVM_VALUE_FUNC,
-                .as = {
-                    .func = {
-                        .func = jsruntime_console_toString,
-                    }
-                }
+                .as.func.func = jsruntime_console_toString,
             }
         );
         jsvm_object_insert(&globals, 
             atom_table_get_or_insert_new_cstr(&atom_table, "console"),
             (JsVmValue) {
                 .kind = JSVM_VALUE_OBJECT,
-                .as = {
-                    .object = console
-                }
+                .as.object = console
             }
         );
     }
