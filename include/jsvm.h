@@ -8,6 +8,8 @@ enum {
     JSVM_GET_MEMBER,
     JSVM_PUSH_STR,
     JSVM_CALL,
+    JSVM_DUP,
+    JSVM_THIS,
     JSVM_INST_COUNT
 };
 typedef struct {
@@ -43,7 +45,7 @@ struct JsVmValue {
         JsVmObject* object;
         JsVmString string;
         struct {
-            void (*func)(JsVmValue* func, JsVmStack* stack, size_t num_args);
+            void (*func)(JsVmValue* thiz, JsVmValue* func, JsVmStack* stack, size_t num_args);
         } func;
     } as;
 };

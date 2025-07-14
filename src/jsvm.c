@@ -103,14 +103,12 @@ void jsvm_dump_value(FILE* sink, const JsVmValue* value) {
 void jsvm_interpret(JsVmObject* globals, JsVmStack* stack, JsVmInstruction* inst) {
     (void)stack;
     (void)inst;
-    static_assert(JSVM_INST_COUNT == 4, "Update jsvm_interpret");
+    static_assert(JSVM_INST_COUNT == 6, "Update jsvm_interpret");
     switch(inst->kind) {
     case JSVM_PUSH_STR: {
         JsVmValue value = {
             .kind = JSVM_VALUE_STRING,
-            .as = {
-                .string = { 0 }
-            }
+            .as.string = { 0 }
         };
         da_reserve(&value.as.string, inst->as.push_str.len);
         memcpy(value.as.string.items, inst->as.push_str.data, inst->as.push_str.len);
@@ -146,9 +144,10 @@ void jsvm_interpret(JsVmObject* globals, JsVmStack* stack, JsVmInstruction* inst
     case JSVM_CALL: {
         assert(stack->len > 0);
         JsVmValue value = da_pop(stack);
+        JsVmValue this = da_pop(stack);
         switch(value.kind) {
         case JSVM_VALUE_FUNC: {
-            value.as.func.func(&value, stack, inst->as.call.num_args);
+            value.as.func.func(&this, &value, stack, inst->as.call.num_args);
         } break;
         default:
             fprintf(stderr, "TODO "__FILE__":"STRINGIFY1(__LINE__)": throw runtime error on calling non function: ");
@@ -156,6 +155,17 @@ void jsvm_interpret(JsVmObject* globals, JsVmStack* stack, JsVmInstruction* inst
             fprintf(stderr, "\n");
             abort();
         }
+    } break;
+    case JSVM_DUP: {
+        assert(stack->len > 0);
+        da_reserve(stack, 1);
+        JsVmValue value = stack->items[stack->len-1];
+        // TODO: technically incorrect. We'd need jsvm_value_clone
+        da_push(stack, value);
+    } break;
+    case JSVM_THIS: {
+        // TODO: this
+        da_push(stack, jsvm_undefined());
     } break;
     default:
         todof("jsvm_interpret(%d)\n", inst->kind);

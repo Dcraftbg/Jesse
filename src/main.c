@@ -486,9 +486,7 @@ void js_compile_ast(JsVmInstructions* insts, JsAST* ast) {
             js_compile_ast(insts, ast->as.binop.lhs);
             JsVmInstruction inst = {
                 .kind = JSVM_GET_MEMBER,
-                .as = {
-                    .atom = ast->as.binop.rhs->as.atom
-                }
+                .as.atom = ast->as.binop.rhs->as.atom
             };
             da_push(insts, inst);
         } break;
@@ -500,14 +498,29 @@ void js_compile_ast(JsVmInstructions* insts, JsAST* ast) {
         for(size_t i = ast->as.call.args.len; i > 0; --i) {
             js_compile_ast(insts, ast->as.call.args.items[i-1]);
         }
+        if(ast->as.call.what->kind == JSAST_BINOP && ast->as.call.what->as.binop.op == '.') {
+            js_compile_ast(insts, ast->as.call.what->as.binop.lhs);
+            da_push(insts, ((JsVmInstruction) {
+                .kind = JSVM_DUP,
+            }));
+            da_push(insts, ((JsVmInstruction) {
+                .kind = JSVM_GET_MEMBER,
+                .as.atom = ast->as.call.what->as.binop.rhs->as.atom
+            }));
+            JsVmInstruction inst = {
+                .kind = JSVM_CALL,
+                .as.call.num_args = ast->as.call.args.len,
+            };
+            da_push(insts, inst);
+            break;
+        }
+        da_push(insts, ((JsVmInstruction) {
+            .kind = JSVM_THIS
+        }));
         js_compile_ast(insts, ast->as.call.what);
         JsVmInstruction inst = {
             .kind = JSVM_CALL,
-            .as = {
-                .call = {
-                    .num_args = ast->as.call.args.len,
-                }
-            }
+            .as.call.num_args = ast->as.call.args.len,
         };
         da_push(insts, inst);
     } break;
@@ -528,7 +541,7 @@ void js_compile_ast(JsVmInstructions* insts, JsAST* ast) {
     }
 }
 // JS runtime
-static void jsruntime_console_log(JsVmValue*, JsVmStack* stack, size_t num_args) {
+static void jsruntime_console_log(JsVmValue*, JsVmValue*, JsVmStack* stack, size_t num_args) {
     for(size_t i = 0; i < num_args; ++i) {
         if(i > 0) printf(" ");
         assert(stack->len > 0);
@@ -555,12 +568,10 @@ static void jsruntime_console_log(JsVmValue*, JsVmStack* stack, size_t num_args)
     }
     printf("\n");
 }
-static void jsruntime_console_toString(JsVmValue*, JsVmStack* stack, size_t) {
+static void jsruntime_console_toString(JsVmValue*, JsVmValue*, JsVmStack* stack, size_t) {
     JsVmValue value = {
         .kind = JSVM_VALUE_STRING,
-        .as = {
-            .string = { 0 }
-        }
+        .as.string = { 0 }
     };
     da_reserve(&value.as.string, 256);
     value.as.string.len += snprintf(value.as.string.items, value.as.string.cap, "[object console]");
