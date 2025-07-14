@@ -527,11 +527,9 @@ void js_compile_ast(JsVmInstructions* insts, JsAST* ast) {
     case JSAST_STRING: {
         JsVmInstruction inst = {
             .kind = JSVM_PUSH_STR,
-            .as = {
-                .push_str = {
-                    .data = ast->as.str.data,
-                    .len = ast->as.str.len,
-                }
+            .as.push_str = {
+                .data = ast->as.str.data,
+                .len = ast->as.str.len,
             }
         };
         da_push(insts, inst);
@@ -661,11 +659,7 @@ int main(int argc, char** argv) {
             atom_table_get_or_insert_new_cstr(&atom_table, "log"),
             (JsVmValue) {
                 .kind = JSVM_VALUE_FUNC,
-                .as = {
-                    .func = {
-                        .func = jsruntime_console_log
-                    }
-                }
+                .as.func.func = jsruntime_console_log
             }
         );
         jsvm_object_insert(console,
